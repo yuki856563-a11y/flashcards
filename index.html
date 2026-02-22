@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- PWA 設定 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="YT單字卡">
+    <meta name="theme-color" content="#fef2f2">
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/3048/3048122.png">
+
+    <title>YouTube 影片轉單字卡神器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #fef2f2; /* red-50 */
+            color: #1e293b;
+            min-height: 100vh;
+        }
+
+        .en-font { font-family: 'Outfit', sans-serif; }
+        
+        /* 3D 翻轉卡片特效 CSS */
+        .flashcard-container {
+            perspective: 1000px; /* 創造 3D 空間感 */
+            cursor: pointer;
+        }
+        
+        .flashcard-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+        
+        /* 透過 JavaScript 加入 .flipped class 來觸發翻轉 */
+        .flashcard-container.flipped .flashcard-inner {
+            transform: rotateY(180deg);
+        }
+        
+        .flashcard-front, .flashcard-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden; /* 翻轉到背面時隱藏正面 */
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 1.5rem;
+            border: 1px solid #fee2e2;
+        }
+        
+        .flashcard-front {
+            background-color: #ffffff;
+            color: #1e293b;
+        }
+        
+        .flashcard-back {
+            background-color: #ef4444; /* red-500 */
+            color: white;
+            transform: rotateY(180deg);
+        }
+
+        .loading-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    </style>
+</head>
+<body class="p-4 md:p-8 relative">
+
+    <!-- 專屬金鑰登入畫面 -->
+    <div id="apiKeyModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4 transition-opacity">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 transform transition-all">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
+                    <i class="fa-brands fa-youtube text-3xl text-red-500"></i>
+                </div>
+                <h3 class="text-2xl font-black text-slate-900 mb-2">單字卡系統解鎖</h3>
+                <p class="text-sm text-slate-500 leading-relaxed">
+                    請輸入您的專屬 AI 金鑰以啟用系統。<br>
+                    <span class="text-xs text-slate-400">（金鑰將安全儲存於本機瀏覽器中）</span>
+                </p>
+            </div>
+            <div class="mb-6">
+                <input type="password" id="apiKeyInput" placeholder="輸入 AIzaSy 開頭的金鑰..." class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-400 focus:border-red-400 outline-none transition-all text-sm font-mono text-center shadow-inner">
+            </div>
+            <button onclick="saveApiKeyFromModal()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center">
+                <i class="fa-solid fa-lock-open mr-2"></i> 儲存並啟用工具
+            </button>
+        </div>
+    </div>
+
+    <div class="max-w-5xl mx-auto">
+        <!-- Header -->
+        <header class="mb-10 mt-4 flex flex-col items-center text-center border-b border-red-200 pb-8">
+            <div class="inline-flex items-center justify-center p-3 bg-red-100 rounded-2xl mb-4 text-red-600">
+                <i class="fa-brands fa-youtube text-4xl"></i>
+                <i class="fa-solid fa-arrow-right-arrow-left mx-3 text-red-400"></i>
+                <i class="fa-solid fa-layer-group text-3xl"></i>
+            </div>
+            <h1 class="text-3xl md:text-4xl font-black text-slate-900 tracking-tight mb-3">
+                YouTube 影片轉單字卡
+            </h1>
+            <p class="text-slate-500 text-sm md:text-base max-w-lg mx-auto">貼上影片網址或輸入影片主題，AI 將為您自動擷取 10 個核心單字，並生成互動式記憶卡片。</p>
+            
+            <button onclick="resetApiKey()" class="mt-4 text-xs text-slate-400 hover:text-red-500 transition-colors bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
+                <i class="fa-solid fa-key mr-1"></i>重設金鑰
+            </button>
+        </header>
+
+        <!-- Input Area -->
+        <div class="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-red-100 mb-8 max-w-3xl mx-auto">
+            <div class="mb-5">
+                <label class="block text-slate-700 text-sm font-bold mb-2">
+                    <i class="fa-solid fa-link text-red-400 mr-2"></i>影片來源 (輸入網址或關鍵字)
+                </label>
+                <input type="text" id="videoInput" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-400 focus:border-red-400 outline-none transition-all text-base placeholder-slate-400" placeholder="例如：https://www.youtube.com/watch?v=... 或 'TED 睡眠科學'">
+            </div>
+            
+            <button id="generateBtn" onclick="generateFlashcards()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 px-6 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center">
+                <i class="fa-solid fa-wand-magic-sparkles mr-2 text-red-400"></i> <span id="btnText">魔法生成單字卡</span>
+            </button>
+        </div>
+
+        <!-- Result Area -->
+        <div id="loadingArea" class="hidden flex-col items-center justify-center py-12">
+            <div class="w-16 h-16 border-4 border-red-100 border-t-red-500 rounded-full animate-spin mb-6"></div>
+            <p class="text-slate-600 font-medium text-lg loading-pulse">AI 正在觀看影片並整理單字卡...</p>
+            <p class="text-slate-400 text-sm mt-2">這可能需要幾秒鐘的時間</p>
+        </div>
+
+        <!-- Flashcards Grid -->
+        <div id="flashcardsGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 hidden">
+            <!-- Cards will be injected here -->
+        </div>
+        
+        <!-- Controls (Hidden initially) -->
+        <div id="controlsArea" class="hidden mt-10 text-center">
+            <button onclick="flipAllCards()" class="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold py-3 px-6 rounded-xl transition-colors shadow-sm mx-2">
+                <i class="fa-solid fa-arrows-rotate mr-2 text-slate-400"></i>一鍵全部翻面
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // 金鑰管理邏輯
+        let apiKey = localStorage.getItem('gemini_api_key') || "";
+
+        function showApiKeyModal() { document.getElementById('apiKeyModal').classList.remove('hidden'); }
+        function hideApiKeyModal() { document.getElementById('apiKeyModal').classList.add('hidden'); }
+
+        function saveApiKeyFromModal() {
+            const val = document.getElementById('apiKeyInput').value.trim();
+            if(val.startsWith("AIzaSy")) {
+                apiKey = val;
+                localStorage.setItem('gemini_api_key', apiKey);
+                hideApiKeyModal();
+            } else {
+                alert("⛔ 格式錯誤：通行證必須是 AIzaSy 開頭的文字！");
+            }
+        }
+
+        function checkAndGetApiKey() {
+            if (!apiKey || !apiKey.startsWith("AIzaSy")) {
+                showApiKeyModal();
+                return false;
+            }
+            return true;
+        }
+
+        function resetApiKey() {
+            if (confirm("確定要登出並清除目前的通行證嗎？")) {
+                localStorage.removeItem('gemini_api_key');
+                apiKey = "";
+                showApiKeyModal();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!apiKey || !apiKey.startsWith("AIzaSy")) {
+                showApiKeyModal();
+            }
+        });
+
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+        
+        async function fetchWithRetry(url, options, maxRetries = 5) {
+            const delays = [1000, 2000, 4000, 8000, 16000];
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        const errData = await response.json().catch(() => ({}));
+                        throw new Error(errData.error?.message || `HTTP error! status: ${response.status}`);
+                    }
+                    return await response.json();
+                } catch (error) {
+                    if (i === maxRetries - 1) throw error;
+                    await sleep(delays[i]);
+                }
+            }
+        }
+
+        async function generateFlashcards() {
+            if (!checkAndGetApiKey()) return;
+
+            const videoInput = document.getElementById('videoInput').value.trim();
+            if (!videoInput) {
+                alert("請先輸入 YouTube 網址或影片關鍵字喔！");
+                return;
+            }
+
+            // UI 狀態切換
+            const btn = document.getElementById('generateBtn');
+            const loading = document.getElementById('loadingArea');
+            const grid = document.getElementById('flashcardsGrid');
+            const controls = document.getElementById('controlsArea');
+            
+            btn.disabled = true;
+            btn.classList.add('opacity-75', 'cursor-not-allowed');
+            grid.classList.add('hidden');
+            controls.classList.add('hidden');
+            loading.classList.remove('hidden');
+            loading.classList.add('flex');
+            grid.innerHTML = "";
+
+            // 嚴格要求 AI 回傳 JSON 格式
+            const promptText = `
+                你是一位專業的英文老師。請透過 Google 搜尋了解以下 YouTube 影片網址或主題的內容：
+                「${videoInput}」
+                
+                請從這個影片的語境中，精選出 10 個適合語言學習者記憶的「核心英文單字」。
+                
+                ⚠️ **絕對的規則**：
+                你的回覆「必須只有」純淨的 JSON 陣列格式，絕對不能包含任何 Markdown 語法（不要寫 \`\`\`json）、不要打招呼、不要結語。
+                若違反此規則系統會崩潰。
+                
+                JSON 格式範例：
+                [
+                  {
+                    "word": "Algorithm",
+                    "part_of_speech": "n.",
+                    "translation": "演算法",
+                    "example": "YouTube uses an algorithm to recommend videos."
+                  }
+                ]
+            `;
+
+            const options = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: promptText }] }],
+                    tools: [{ google_search: {} }] // 啟用聯網搜尋，讓它能理解 YouTube 內容
+                })
+            };
+
+            const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+            let data = null;
+            let lastError = null;
+
+            for (const modelName of modelsToTry) {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+                try {
+                    data = await fetchWithRetry(url, options);
+                    if (data && data.candidates) break; 
+                } catch (error) {
+                    lastError = error;
+                }
+            }
+
+            try {
+                if (!data) throw lastError || new Error("無法連線到 AI 模型。");
+                
+                let rawText = data.candidates[0].content.parts[0].text;
+                
+                // 嘗試清洗並解析 JSON (去除可能多餘的 Markdown 標記)
+                rawText = rawText.replace(/```json/gi, '').replace(/```/gi, '').trim();
+                
+                let wordList = [];
+                try {
+                    wordList = JSON.parse(rawText);
+                } catch (parseError) {
+                    console.error("JSON 解析失敗，原始字串：", rawText);
+                    throw new Error("AI 回傳的資料格式錯誤，請再試一次！");
+                }
+
+                if (!Array.isArray(wordList) || wordList.length === 0) {
+                    throw new Error("找不到相關單字，請嘗試輸入更詳細的影片主題。");
+                }
+
+                renderFlashcards(wordList);
+                
+            } catch (error) {
+                console.error("處理錯誤:", error);
+                if(error.message.includes("API key not valid")) {
+                    localStorage.removeItem('gemini_api_key');
+                    apiKey = "";
+                    alert("⛔ 您的金鑰無效或已過期，請重新輸入！");
+                    showApiKeyModal();
+                } else {
+                    alert(`產生失敗：${error.message}`);
+                }
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-75', 'cursor-not-allowed');
+                loading.classList.add('hidden');
+                loading.classList.remove('flex');
+            }
+        }
+
+        // 渲染單字卡畫面
+        function renderFlashcards(words) {
+            const grid = document.getElementById('flashcardsGrid');
+            
+            grid.innerHTML = words.map((item, index) => `
+                <div class="h-64 flashcard-container group" onclick="this.classList.toggle('flipped')">
+                    <div class="flashcard-inner">
+                        <!-- 正面：英文單字 -->
+                        <div class="flashcard-front">
+                            <span class="absolute top-4 left-4 text-xs font-bold text-slate-300">#${index + 1}</span>
+                            <div class="text-xs font-bold text-red-400 mb-2 px-2 py-1 bg-red-50 rounded-md border border-red-100 uppercase tracking-wider">${item.part_of_speech}</div>
+                            <h3 class="text-3xl font-black en-font text-slate-800 break-words w-full px-4">${item.word}</h3>
+                            <div class="absolute bottom-4 text-slate-300 text-xs flex items-center">
+                                <i class="fa-solid fa-hand-pointer mr-1 animate-bounce"></i> 點擊翻面
+                            </div>
+                        </div>
+                        
+                        <!-- 背面：中文與例句 -->
+                        <div class="flashcard-back">
+                            <h3 class="text-2xl font-black mb-4">${item.translation}</h3>
+                            <div class="w-full h-px bg-red-400/50 mb-4"></div>
+                            <p class="text-sm text-red-50 italic leading-relaxed px-2 text-left w-full border-l-2 border-white pl-3">
+                                "${item.example}"
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            grid.classList.remove('hidden');
+            document.getElementById('controlsArea').classList.remove('hidden');
+            
+            // 螢幕自動往下滾動到單字卡區域
+            setTimeout(() => {
+                grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+        }
+
+        // 一鍵翻面功能
+        function flipAllCards() {
+            const cards = document.querySelectorAll('.flashcard-container');
+            let allFlipped = true;
+            
+            // 檢查是否全部都在背面
+            cards.forEach(card => {
+                if (!card.classList.contains('flipped')) allFlipped = false;
+            });
+
+            // 如果全部都在背面，就翻回正面；否則全部翻到背面
+            cards.forEach(card => {
+                if (allFlipped) {
+                    card.classList.remove('flipped');
+                } else {
+                    card.classList.add('flipped');
+                }
+            });
+        }
+    </script>
+</body>
+</html>
